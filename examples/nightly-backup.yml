@@ -1,0 +1,26 @@
+name: Nightly Backup
+
+on:
+  schedule:
+    # Runs at 02:00 UTC every day
+    - cron: '0 2 * * *'
+  # Allow manual trigger from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger on-demand backup
+        id: backup
+        uses: anorph/foundrydb-github-actions/actions/trigger-backup@v1
+        with:
+          username: ${{ secrets.FOUNDRYDB_USERNAME }}
+          password: ${{ secrets.FOUNDRYDB_PASSWORD }}
+          service-id: ${{ secrets.PROD_SERVICE_ID }}
+
+      - name: Report backup ID
+        run: |
+          echo "Backup triggered successfully."
+          echo "Backup ID: ${{ steps.backup.outputs.backup-id }}"

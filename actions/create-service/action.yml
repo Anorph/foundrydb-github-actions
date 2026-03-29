@@ -1,0 +1,147 @@
+name: Create FoundryDB Service
+description: Creates a managed database service on FoundryDB and waits until it reaches Running status.
+
+inputs:
+  api-url:
+    description: FoundryDB API base URL
+    required: false
+    default: https://api.foundrydb.com
+  username:
+    description: FoundryDB username
+    required: true
+  password:
+    description: FoundryDB password
+    required: true
+  name:
+    description: Name of the database service to create
+    required: true
+  database-type:
+    description: Database engine type (postgresql, mysql, mongodb, valkey, kafka)
+    required: true
+  version:
+    description: Database engine version (e.g. 17, 8.4, 7.0)
+    required: true
+  plan:
+    description: Compute plan name
+    required: false
+    default: tier-2
+  storage-gb:
+    description: Storage size in gigabytes
+    required: false
+    default: "50"
+  zone:
+    description: UpCloud zone to deploy into
+    required: false
+    default: se-sto1
+
+outputs:
+  service-id:
+    description: Unique ID of the created service
+    value: ${{ steps.wait.outputs.service-id }}
+  service-name:
+    description: Name of the created service
+    value: ${{ steps.wait.outputs.service-name }}
+  host:
+    description: Primary hostname for the service
+    value: ${{ steps.wait.outputs.host }}
+  port:
+    description: Primary port for the service
+    value: ${{ steps.wait.outputs.port }}
+  status:
+    description: Final status of the service
+    value: ${{ steps.wait.outputs.status }}
+
+runs:
+  using: composite
+  steps:
+    - name: Create service
+      id: create
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "::add-mask::${{ inputs.password }}"
+
+        API="${{ inputs.api-url }}"
+        AUTH="${{ inputs.username }}:${{ inputs.password }}"
+
+        echo "Creating ${{ inputs.database-type }} ${{ inputs.version }} service '${{ inputs.name }}'..."
+
+        RESPONSE=$(curl -fsSL \
+          -u "$AUTH" \
+          -X POST "$API/managed-services" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "name":            "${{ inputs.name }}",
+            "database_type":   "${{ inputs.database-type }}",
+            "version":         "${{ inputs.version }}",
+            "plan_name":       "${{ inputs.plan }}",
+            "storage_size_gb": ${{ inputs.storage-gb }},
+            "storage_tier":    "maxiops",
+            "zone":            "${{ inputs.zone }}"
+          }')
+
+        SERVICE_ID=$(echo "$RESPONSE" | jq -r '.id // .service_id // empty')
+
+        if [[ -z "$SERVICE_ID" ]]; then
+          echo "Failed to parse service ID from response:"
+          echo "$RESPONSE"
+          exit 1
+        fi
+
+        echo "service-id=$SERVICE_ID" >> "$GITHUB_OUTPUT"
+        # Write to file so delete-service can find it even without an explicit input
+        echo "$SERVICE_ID" > .foundrydb-service-id
+        echo "Service created with ID: $SERVICE_ID"
+
+    - name: Wait for service to be running
+      id: wait
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "::add-mask::${{ inputs.password }}"
+
+        API="${{ inputs.api-url }}"
+        AUTH="${{ inputs.username }}:${{ inputs.password }}"
+        SERVICE_ID="${{ steps.create.outputs.service-id }}"
+        TIMEOUT=900   # 15 minutes
+        INTERVAL=15
+        ELAPSED=0
+
+        echo "Waiting for service $SERVICE_ID to reach 'running' status (timeout: ${TIMEOUT}s)..."
+
+        while true; do
+          DETAIL=$(curl -fsSL -u "$AUTH" "$API/managed-services/$SERVICE_ID")
+          STATUS=$(echo "$DETAIL" | jq -r '.status // empty')
+
+          echo "  [$ELAPSED s] status=$STATUS"
+
+          if [[ "$STATUS" == "running" ]]; then
+            HOST=$(echo "$DETAIL" | jq -r '.dns_records[0].full_domain // .host // empty')
+            PORT=$(echo "$DETAIL" | jq -r '.port // empty')
+
+            echo "service-id=$SERVICE_ID"         >> "$GITHUB_OUTPUT"
+            echo "service-name=${{ inputs.name }}" >> "$GITHUB_OUTPUT"
+            echo "host=$HOST"                      >> "$GITHUB_OUTPUT"
+            echo "port=$PORT"                      >> "$GITHUB_OUTPUT"
+            echo "status=$STATUS"                  >> "$GITHUB_OUTPUT"
+
+            echo "Service is running. host=$HOST port=$PORT"
+            exit 0
+          fi
+
+          if [[ "$STATUS" == "error" || "$STATUS" == "failed" ]]; then
+            echo "Service entered error state. Full response:"
+            echo "$DETAIL"
+            exit 1
+          fi
+
+          if [[ "$ELAPSED" -ge "$TIMEOUT" ]]; then
+            echo "Timed out after ${TIMEOUT}s waiting for service to start. Last status: $STATUS"
+            exit 1
+          fi
+
+          sleep "$INTERVAL"
+          ELAPSED=$((ELAPSED + INTERVAL))
+        done

@@ -1,0 +1,60 @@
+name: Delete FoundryDB Service
+description: Deletes a FoundryDB managed database service. Reads the service ID from an input or from the .foundrydb-service-id file written by create-service. Designed to run in always() cleanup steps.
+
+inputs:
+  api-url:
+    description: FoundryDB API base URL
+    required: false
+    default: https://api.foundrydb.com
+  username:
+    description: FoundryDB username
+    required: true
+  password:
+    description: FoundryDB password
+    required: true
+  service-id:
+    description: ID of the service to delete. If omitted, the ID is read from .foundrydb-service-id.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Delete service
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "::add-mask::${{ inputs.password }}"
+
+        API="${{ inputs.api-url }}"
+        AUTH="${{ inputs.username }}:${{ inputs.password }}"
+        SERVICE_ID="${{ inputs.service-id }}"
+
+        # Fall back to file written by create-service
+        if [[ -z "$SERVICE_ID" && -f ".foundrydb-service-id" ]]; then
+          SERVICE_ID=$(cat .foundrydb-service-id | tr -d '[:space:]')
+          echo "Read service ID from .foundrydb-service-id: $SERVICE_ID"
+        fi
+
+        if [[ -z "$SERVICE_ID" ]]; then
+          echo "No service ID provided and .foundrydb-service-id not found. Nothing to delete."
+          exit 0
+        fi
+
+        echo "Deleting service $SERVICE_ID..."
+
+        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+          -u "$AUTH" \
+          -X DELETE "$API/managed-services/$SERVICE_ID")
+
+        if [[ "$HTTP_STATUS" == "200" || "$HTTP_STATUS" == "204" || "$HTTP_STATUS" == "202" ]]; then
+          echo "Service $SERVICE_ID deleted successfully (HTTP $HTTP_STATUS)."
+          rm -f .foundrydb-service-id
+        elif [[ "$HTTP_STATUS" == "404" ]]; then
+          echo "Service $SERVICE_ID not found (HTTP 404) — already deleted or never created."
+          rm -f .foundrydb-service-id
+        else
+          echo "Unexpected HTTP status $HTTP_STATUS when deleting service $SERVICE_ID."
+          exit 1
+        fi

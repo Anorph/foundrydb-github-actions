@@ -1,0 +1,55 @@
+name: Setup FoundryDB CLI
+description: Downloads and installs the fdb CLI and configures authentication environment variables.
+
+inputs:
+  version:
+    description: Version of the fdb CLI to install (currently only latest is supported)
+    required: false
+    default: latest
+  api-url:
+    description: FoundryDB API base URL
+    required: false
+    default: https://api.foundrydb.com
+  username:
+    description: FoundryDB username for authentication
+    required: true
+  password:
+    description: FoundryDB password for authentication
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Download fdb CLI
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        INSTALL_DIR="$HOME/.local/bin"
+        mkdir -p "$INSTALL_DIR"
+
+        echo "Downloading fdb CLI..."
+        curl -fsSL \
+          "https://github.com/Anorph/foundrydb-cli/releases/latest/download/fdb-linux-amd64" \
+          -o "$INSTALL_DIR/fdb"
+
+        chmod +x "$INSTALL_DIR/fdb"
+
+        # Add to PATH for this and subsequent steps
+        echo "$INSTALL_DIR" >> "$GITHUB_PATH"
+
+        echo "fdb CLI installed at $INSTALL_DIR/fdb"
+
+    - name: Configure FoundryDB environment
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "FOUNDRYDB_API_URL=${{ inputs.api-url }}" >> "$GITHUB_ENV"
+        echo "FOUNDRYDB_USERNAME=${{ inputs.username }}" >> "$GITHUB_ENV"
+        echo "FOUNDRYDB_PASSWORD=${{ inputs.password }}" >> "$GITHUB_ENV"
+
+        # Mask the password so it does not appear in logs
+        echo "::add-mask::${{ inputs.password }}"
+
+        echo "FoundryDB environment configured (API: ${{ inputs.api-url }})"

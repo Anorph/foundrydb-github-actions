@@ -1,0 +1,146 @@
+name: Get FoundryDB Connection String
+description: Retrieves a database connection string for a running FoundryDB service. The password is masked in all logs.
+
+inputs:
+  api-url:
+    description: FoundryDB API base URL
+    required: false
+    default: https://api.foundrydb.com
+  username:
+    description: FoundryDB username
+    required: true
+  password:
+    description: FoundryDB password
+    required: true
+  service-id:
+    description: ID of the service to get credentials for
+    required: true
+  db-username:
+    description: Database user whose credentials to retrieve
+    required: false
+    default: app_user
+  format:
+    description: Output format for the connection string (url or env)
+    required: false
+    default: url
+
+outputs:
+  connection-string:
+    description: Database connection string (masked in logs)
+    value: ${{ steps.build.outputs.connection-string }}
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch service details and reveal password
+      id: fetch
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "::add-mask::${{ inputs.password }}"
+
+        API="${{ inputs.api-url }}"
+        AUTH="${{ inputs.username }}:${{ inputs.password }}"
+        SERVICE_ID="${{ inputs.service-id }}"
+        DB_USER="${{ inputs.db-username }}"
+
+        # Fetch service details for host, port, and database type
+        DETAIL=$(curl -fsSL -u "$AUTH" "$API/managed-services/$SERVICE_ID")
+        HOST=$(echo "$DETAIL" | jq -r '.dns_records[0].full_domain // .host // empty')
+        PORT=$(echo "$DETAIL"  | jq -r '.port // empty')
+        DB_TYPE=$(echo "$DETAIL" | jq -r '.database_type // empty')
+
+        if [[ -z "$HOST" ]]; then
+          echo "Could not determine host from service detail. Response:"
+          echo "$DETAIL"
+          exit 1
+        fi
+
+        # Reveal the database user password
+        PASS_RESP=$(curl -fsSL -u "$AUTH" \
+          -X POST "$API/managed-services/$SERVICE_ID/database-users/$DB_USER/reveal-password")
+        DB_PASS=$(echo "$PASS_RESP" | jq -r '.password // empty')
+
+        if [[ -z "$DB_PASS" ]]; then
+          echo "Could not retrieve database password. Response:"
+          echo "$PASS_RESP"
+          exit 1
+        fi
+
+        # Mask the database password immediately
+        echo "::add-mask::$DB_PASS"
+
+        echo "host=$HOST"       >> "$GITHUB_OUTPUT"
+        echo "port=$PORT"       >> "$GITHUB_OUTPUT"
+        echo "db-type=$DB_TYPE" >> "$GITHUB_OUTPUT"
+        echo "db-user=$DB_USER" >> "$GITHUB_OUTPUT"
+
+        # Write password to a temp file to avoid it appearing in process list
+        PASS_FILE=$(mktemp)
+        echo -n "$DB_PASS" > "$PASS_FILE"
+        echo "pass-file=$PASS_FILE" >> "$GITHUB_OUTPUT"
+
+    - name: Build connection string
+      id: build
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        HOST="${{ steps.fetch.outputs.host }}"
+        PORT="${{ steps.fetch.outputs.port }}"
+        DB_TYPE="${{ steps.fetch.outputs.db-type }}"
+        DB_USER="${{ steps.fetch.outputs.db-user }}"
+        PASS_FILE="${{ steps.fetch.outputs.pass-file }}"
+        FORMAT="${{ inputs.format }}"
+
+        DB_PASS=$(cat "$PASS_FILE")
+        rm -f "$PASS_FILE"
+
+        # Mask before any output
+        echo "::add-mask::$DB_PASS"
+
+        case "$DB_TYPE" in
+          postgresql|postgres)
+            SCHEME="postgresql"
+            DEFAULT_PORT="${PORT:-5432}"
+            DEFAULT_DB="defaultdb"
+            ;;
+          mysql)
+            SCHEME="mysql"
+            DEFAULT_PORT="${PORT:-3306}"
+            DEFAULT_DB="defaultdb"
+            ;;
+          mongodb)
+            SCHEME="mongodb"
+            DEFAULT_PORT="${PORT:-27017}"
+            DEFAULT_DB="defaultdb"
+            ;;
+          valkey|redis)
+            SCHEME="redis"
+            DEFAULT_PORT="${PORT:-6380}"
+            DEFAULT_DB=""
+            ;;
+          *)
+            SCHEME="$DB_TYPE"
+            DEFAULT_PORT="$PORT"
+            DEFAULT_DB="defaultdb"
+            ;;
+        esac
+
+        if [[ "$FORMAT" == "url" ]]; then
+          if [[ "$DB_TYPE" == "valkey" || "$DB_TYPE" == "redis" ]]; then
+            CONNECTION="${SCHEME}://${DB_USER}:${DB_PASS}@${HOST}:${DEFAULT_PORT}"
+          else
+            CONNECTION="${SCHEME}://${DB_USER}:${DB_PASS}@${HOST}:${DEFAULT_PORT}/${DEFAULT_DB}"
+          fi
+        elif [[ "$FORMAT" == "env" ]]; then
+          CONNECTION="HOST=${HOST} PORT=${DEFAULT_PORT} USER=${DB_USER} PASSWORD=${DB_PASS} DATABASE=${DEFAULT_DB}"
+        else
+          echo "Unknown format '$FORMAT'. Supported: url, env"
+          exit 1
+        fi
+
+        echo "::add-mask::$CONNECTION"
+        echo "connection-string=$CONNECTION" >> "$GITHUB_OUTPUT"
+        echo "Connection string built and masked."

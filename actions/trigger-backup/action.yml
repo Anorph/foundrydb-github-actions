@@ -1,0 +1,56 @@
+name: Trigger FoundryDB Backup
+description: Triggers an on-demand backup for a FoundryDB managed database service.
+
+inputs:
+  api-url:
+    description: FoundryDB API base URL
+    required: false
+    default: https://api.foundrydb.com
+  username:
+    description: FoundryDB username
+    required: true
+  password:
+    description: FoundryDB password
+    required: true
+  service-id:
+    description: ID of the service to back up
+    required: true
+
+outputs:
+  backup-id:
+    description: ID of the triggered backup
+    value: ${{ steps.trigger.outputs.backup-id }}
+
+runs:
+  using: composite
+  steps:
+    - name: Trigger backup
+      id: trigger
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "::add-mask::${{ inputs.password }}"
+
+        API="${{ inputs.api-url }}"
+        AUTH="${{ inputs.username }}:${{ inputs.password }}"
+        SERVICE_ID="${{ inputs.service-id }}"
+
+        echo "Triggering on-demand backup for service $SERVICE_ID..."
+
+        RESPONSE=$(curl -fsSL \
+          -u "$AUTH" \
+          -X POST "$API/managed-services/$SERVICE_ID/backups" \
+          -H "Content-Type: application/json" \
+          -d '{}')
+
+        BACKUP_ID=$(echo "$RESPONSE" | jq -r '.id // .backup_id // empty')
+
+        if [[ -z "$BACKUP_ID" ]]; then
+          echo "Failed to parse backup ID from response:"
+          echo "$RESPONSE"
+          exit 1
+        fi
+
+        echo "backup-id=$BACKUP_ID" >> "$GITHUB_OUTPUT"
+        echo "Backup triggered with ID: $BACKUP_ID"

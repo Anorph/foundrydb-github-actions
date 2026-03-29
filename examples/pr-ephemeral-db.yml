@@ -1,0 +1,63 @@
+name: PR Integration Tests
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Install the fdb CLI and set authentication environment variables
+      - name: Set up FoundryDB
+        uses: anorph/foundrydb-github-actions/actions/setup@v1
+        with:
+          username: ${{ secrets.FOUNDRYDB_USERNAME }}
+          password: ${{ secrets.FOUNDRYDB_PASSWORD }}
+
+      # Provision a fresh PostgreSQL instance scoped to this PR
+      - name: Create ephemeral database
+        id: db
+        uses: anorph/foundrydb-github-actions/actions/create-service@v1
+        with:
+          username: ${{ secrets.FOUNDRYDB_USERNAME }}
+          password: ${{ secrets.FOUNDRYDB_PASSWORD }}
+          name: pr-${{ github.event.pull_request.number }}-db
+          database-type: postgresql
+          version: "17"
+          plan: tier-2
+          storage-gb: "50"
+          zone: se-sto1
+
+      # Retrieve the connection string (password is automatically masked)
+      - name: Get connection string
+        id: conn
+        uses: anorph/foundrydb-github-actions/actions/get-connection-string@v1
+        with:
+          username: ${{ secrets.FOUNDRYDB_USERNAME }}
+          password: ${{ secrets.FOUNDRYDB_PASSWORD }}
+          service-id: ${{ steps.db.outputs.service-id }}
+          db-username: app_user
+          format: url
+
+      # Run your test suite — DATABASE_URL is never printed in plain text
+      - name: Run integration tests
+        env:
+          DATABASE_URL: ${{ steps.conn.outputs.connection-string }}
+        run: |
+          # Replace this with your actual test command, e.g.:
+          # npm ci && npm test
+          # go test ./...
+          # pytest
+          echo "Running tests against ${{ steps.db.outputs.host }}:${{ steps.db.outputs.port }}"
+
+      # Always clean up the ephemeral database, even if tests fail
+      - name: Delete ephemeral database
+        if: always()
+        uses: anorph/foundrydb-github-actions/actions/delete-service@v1
+        with:
+          username: ${{ secrets.FOUNDRYDB_USERNAME }}
+          password: ${{ secrets.FOUNDRYDB_PASSWORD }}
+          service-id: ${{ steps.db.outputs.service-id }}
