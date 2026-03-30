@@ -12,14 +12,18 @@ inputs:
   password:
     description: FoundryDB password
     required: true
+  organization-id:
+    description: Optional organization ID. When provided, sent as the X-Active-Org-ID header so the service is created under the specified organization.
+    required: false
+    default: ""
   name:
     description: Name of the database service to create
     required: true
   database-type:
-    description: Database engine type (postgresql, mysql, mongodb, valkey, kafka)
+    description: Database engine type (postgresql, mysql, mongodb, valkey, kafka, opensearch, mssql)
     required: true
   version:
-    description: Database engine version (e.g. 17, 8.4, 7.0)
+    description: "Database engine version. Examples: postgresql 14-18, mysql 8.4, mongodb 6.0-8.0, valkey 7.2-9.0, kafka 3.6-4.0, opensearch 2.19, mssql 4.8"
     required: true
   plan:
     description: Compute plan name
@@ -67,10 +71,13 @@ runs:
 
         echo "Creating ${{ inputs.database-type }} ${{ inputs.version }} service '${{ inputs.name }}'..."
 
-        RESPONSE=$(curl -fsSL \
-          -u "$AUTH" \
-          -X POST "$API/managed-services" \
-          -H "Content-Type: application/json" \
+        CURL_ARGS=(-fsSL -u "$AUTH" -X POST "$API/managed-services" -H "Content-Type: application/json")
+        if [[ -n "${{ inputs.organization-id }}" ]]; then
+          CURL_ARGS+=(-H "X-Active-Org-ID: ${{ inputs.organization-id }}")
+          echo "Using organization ID: ${{ inputs.organization-id }}"
+        fi
+
+        RESPONSE=$(curl "${CURL_ARGS[@]}" \
           -d '{
             "name":            "${{ inputs.name }}",
             "database_type":   "${{ inputs.database-type }}",
@@ -109,10 +116,15 @@ runs:
         INTERVAL=15
         ELAPSED=0
 
+        POLL_ARGS=(-fsSL -u "$AUTH")
+        if [[ -n "${{ inputs.organization-id }}" ]]; then
+          POLL_ARGS+=(-H "X-Active-Org-ID: ${{ inputs.organization-id }}")
+        fi
+
         echo "Waiting for service $SERVICE_ID to reach 'running' status (timeout: ${TIMEOUT}s)..."
 
         while true; do
-          DETAIL=$(curl -fsSL -u "$AUTH" "$API/managed-services/$SERVICE_ID")
+          DETAIL=$(curl "${POLL_ARGS[@]}" "$API/managed-services/$SERVICE_ID")
           STATUS=$(echo "$DETAIL" | jq -r '.status // empty')
 
           echo "  [$ELAPSED s] status=$STATUS"

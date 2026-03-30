@@ -12,6 +12,10 @@ inputs:
   password:
     description: FoundryDB password
     required: true
+  organization-id:
+    description: Optional organization ID. When provided, sent as the X-Active-Org-ID header.
+    required: false
+    default: ""
   service-id:
     description: ID of the service to delete. If omitted, the ID is read from .foundrydb-service-id.
     required: false
@@ -44,9 +48,12 @@ runs:
 
         echo "Deleting service $SERVICE_ID..."
 
-        HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-          -u "$AUTH" \
-          -X DELETE "$API/managed-services/$SERVICE_ID")
+        DELETE_ARGS=(-s -o /dev/null -w "%{http_code}" -u "$AUTH" -X DELETE)
+        if [[ -n "${{ inputs.organization-id }}" ]]; then
+          DELETE_ARGS+=(-H "X-Active-Org-ID: ${{ inputs.organization-id }}")
+        fi
+
+        HTTP_STATUS=$(curl "${DELETE_ARGS[@]}" "$API/managed-services/$SERVICE_ID")
 
         if [[ "$HTTP_STATUS" == "200" || "$HTTP_STATUS" == "204" || "$HTTP_STATUS" == "202" ]]; then
           echo "Service $SERVICE_ID deleted successfully (HTTP $HTTP_STATUS)."

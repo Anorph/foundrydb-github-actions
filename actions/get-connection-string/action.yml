@@ -12,6 +12,10 @@ inputs:
   password:
     description: FoundryDB password
     required: true
+  organization-id:
+    description: Optional organization ID. When provided, sent as the X-Active-Org-ID header.
+    required: false
+    default: ""
   service-id:
     description: ID of the service to get credentials for
     required: true
@@ -45,8 +49,13 @@ runs:
         SERVICE_ID="${{ inputs.service-id }}"
         DB_USER="${{ inputs.db-username }}"
 
+        FETCH_ARGS=(-fsSL -u "$AUTH")
+        if [[ -n "${{ inputs.organization-id }}" ]]; then
+          FETCH_ARGS+=(-H "X-Active-Org-ID: ${{ inputs.organization-id }}")
+        fi
+
         # Fetch service details for host, port, and database type
-        DETAIL=$(curl -fsSL -u "$AUTH" "$API/managed-services/$SERVICE_ID")
+        DETAIL=$(curl "${FETCH_ARGS[@]}" "$API/managed-services/$SERVICE_ID")
         HOST=$(echo "$DETAIL" | jq -r '.dns_records[0].full_domain // .host // empty')
         PORT=$(echo "$DETAIL"  | jq -r '.port // empty')
         DB_TYPE=$(echo "$DETAIL" | jq -r '.database_type // empty')
@@ -58,7 +67,7 @@ runs:
         fi
 
         # Reveal the database user password
-        PASS_RESP=$(curl -fsSL -u "$AUTH" \
+        PASS_RESP=$(curl "${FETCH_ARGS[@]}" \
           -X POST "$API/managed-services/$SERVICE_ID/database-users/$DB_USER/reveal-password")
         DB_PASS=$(echo "$PASS_RESP" | jq -r '.password // empty')
 

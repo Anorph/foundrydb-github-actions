@@ -12,6 +12,10 @@ inputs:
   password:
     description: FoundryDB password
     required: true
+  organization-id:
+    description: Optional organization ID. When provided, sent as the X-Active-Org-ID header.
+    required: false
+    default: ""
   service-id:
     description: ID of the service to back up
     required: true
@@ -38,10 +42,13 @@ runs:
 
         echo "Triggering on-demand backup for service $SERVICE_ID..."
 
-        RESPONSE=$(curl -fsSL \
-          -u "$AUTH" \
-          -X POST "$API/managed-services/$SERVICE_ID/backups" \
-          -H "Content-Type: application/json" \
+        BACKUP_ARGS=(-fsSL -u "$AUTH" -X POST -H "Content-Type: application/json")
+        if [[ -n "${{ inputs.organization-id }}" ]]; then
+          BACKUP_ARGS+=(-H "X-Active-Org-ID: ${{ inputs.organization-id }}")
+        fi
+
+        RESPONSE=$(curl "${BACKUP_ARGS[@]}" \
+          "$API/managed-services/$SERVICE_ID/backups" \
           -d '{}')
 
         BACKUP_ID=$(echo "$RESPONSE" | jq -r '.id // .backup_id // empty')

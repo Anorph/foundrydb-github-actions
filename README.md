@@ -4,11 +4,15 @@ Reusable GitHub Actions (composite) for integrating [FoundryDB](https://foundryd
 
 ## Supported databases
 
-- PostgreSQL
-- MySQL
-- MongoDB
-- Valkey
-- Kafka
+| Database | Supported versions |
+|----------|--------------------|
+| PostgreSQL | 14, 15, 16, 17, 18 |
+| MySQL | 8.4 |
+| MongoDB | 6.0, 7.0, 8.0 |
+| Valkey | 7.2 - 9.0 |
+| Kafka | 3.6 - 4.0 |
+| OpenSearch | 2.19 |
+| MSSQL | 4.8 |
 
 ## Quick start
 
@@ -26,6 +30,12 @@ For production backup workflows also add:
 | Secret | Value |
 |--------|-------|
 | `PROD_SERVICE_ID` | The ID of your production database service |
+
+If your account belongs to multiple organizations, add the optional organization secret:
+
+| Secret | Value |
+|--------|-------|
+| `FOUNDRYDB_ORG_ID` | The ID of the organization to use (optional) |
 
 ### 2. Use the actions
 
@@ -59,11 +69,13 @@ Creates a managed database service and waits up to 15 minutes for it to reach `r
     username: ${{ secrets.FOUNDRYDB_USERNAME }}
     password: ${{ secrets.FOUNDRYDB_PASSWORD }}
     name: my-test-db
-    database-type: postgresql   # postgresql | mysql | mongodb | valkey | kafka
-    version: "17"
+    database-type: postgresql   # postgresql | mysql | mongodb | valkey | kafka | opensearch | mssql
+    version: "17"               # postgresql: 14-18, mysql: 8.4, mongodb: 6.0-8.0, valkey: 7.2-9.0
+                                # kafka: 3.6-4.0, opensearch: 2.19, mssql: 4.8
     # plan: tier-2              (optional, default: tier-2)
     # storage-gb: "50"          (optional, default: 50)
     # zone: se-sto1             (optional, default: se-sto1)
+    # organization-id: ${{ secrets.FOUNDRYDB_ORG_ID }}  (optional)
 ```
 
 Outputs: `service-id`, `service-name`, `host`, `port`, `status`.
@@ -81,6 +93,7 @@ Deletes a service by ID or reads the ID from `.foundrydb-service-id`. Safe to ru
     username: ${{ secrets.FOUNDRYDB_USERNAME }}
     password: ${{ secrets.FOUNDRYDB_PASSWORD }}
     service-id: ${{ steps.db.outputs.service-id }}  # or omit to use .foundrydb-service-id
+    # organization-id: ${{ secrets.FOUNDRYDB_ORG_ID }}  (optional)
 ```
 
 ### `get-connection-string`
@@ -96,6 +109,7 @@ Retrieves credentials for a database user and builds a connection string. The pa
     service-id: ${{ steps.db.outputs.service-id }}
     # db-username: app_user   (optional, default: app_user)
     # format: url             (optional, url or env, default: url)
+    # organization-id: ${{ secrets.FOUNDRYDB_ORG_ID }}  (optional)
 ```
 
 Output: `connection-string` (masked).
@@ -111,6 +125,7 @@ Triggers an on-demand backup for a service.
     username: ${{ secrets.FOUNDRYDB_USERNAME }}
     password: ${{ secrets.FOUNDRYDB_PASSWORD }}
     service-id: ${{ secrets.PROD_SERVICE_ID }}
+    # organization-id: ${{ secrets.FOUNDRYDB_ORG_ID }}  (optional)
 ```
 
 Output: `backup-id`.
@@ -143,7 +158,7 @@ jobs:
           username: ${{ secrets.FOUNDRYDB_USERNAME }}
           password: ${{ secrets.FOUNDRYDB_PASSWORD }}
           name: pr-${{ github.event.pull_request.number }}-db
-          database-type: postgresql
+          database-type: postgresql  # or: mysql, mongodb, valkey, kafka, opensearch, mssql
           version: "17"
 
       - uses: anorph/foundrydb-github-actions/actions/get-connection-string@v1
