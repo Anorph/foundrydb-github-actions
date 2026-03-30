@@ -11,7 +11,7 @@ Reusable GitHub Actions (composite) for integrating [FoundryDB](https://foundryd
 | MongoDB | 6.0, 7.0, 8.0 |
 | Valkey | 7.2 - 9.0 |
 | Kafka | 3.6 - 4.0 |
-| OpenSearch | 2.19 |
+| OpenSearch | 2 |
 | MSSQL | 4.8 |
 
 ## Quick start
@@ -71,7 +71,7 @@ Creates a managed database service and waits up to 15 minutes for it to reach `r
     name: my-test-db
     database-type: postgresql   # postgresql | mysql | mongodb | valkey | kafka | opensearch | mssql
     version: "17"               # postgresql: 14-18, mysql: 8.4, mongodb: 6.0-8.0, valkey: 7.2-9.0
-                                # kafka: 3.6-4.0, opensearch: 2.19, mssql: 4.8
+                                # kafka: 3.6-4.0, opensearch: 2, mssql: 4.8
     # plan: tier-2              (optional, default: tier-2)
     # storage-gb: "50"          (optional, default: 50)
     # zone: se-sto1             (optional, default: se-sto1)

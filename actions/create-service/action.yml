@@ -23,7 +23,7 @@ inputs:
     description: Database engine type (postgresql, mysql, mongodb, valkey, kafka, opensearch, mssql)
     required: true
   version:
-    description: "Database engine version. Examples: postgresql 14-18, mysql 8.4, mongodb 6.0-8.0, valkey 7.2-9.0, kafka 3.6-4.0, opensearch 2.19, mssql 4.8"
+    description: "Database engine version. Examples: postgresql 14-18, mysql 8.4, mongodb 6.0-8.0, valkey 7.2-9.0, kafka 3.6-4.0, opensearch 2, mssql 4.8"
     required: true
   plan:
     description: Compute plan name

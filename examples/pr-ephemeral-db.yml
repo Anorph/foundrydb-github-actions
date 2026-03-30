@@ -23,7 +23,7 @@ jobs:
       #   database-type: mongodb     version: "8.0"
       #   database-type: valkey      version: "9.0"
       #   database-type: kafka       version: "4.0"
-      #   database-type: opensearch  version: "2.19"
+      #   database-type: opensearch  version: "2"
       #   database-type: mssql       version: "4.8"
       # To scope the service to a specific organization, add:
       #   organization-id: ${{ secrets.FOUNDRYDB_ORG_ID }}
